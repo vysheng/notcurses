@@ -118,7 +118,7 @@ int reset_term_palette(const tinfo* ti, fbuf* f, unsigned touchedpalette){
 // to tear down and account for internal structures. note that we do lots of
 // shit here that is unsafe within a signal handler =[ FIXME.
 static int
-notcurses_stop_minimal(void* vnc, void** altstack){
+notcurses_stop_minimal(void* vnc, void** altstack, int errret){
   notcurses* nc = vnc;
   int ret = 0;
   ret |= drop_signals(nc, altstack);
@@ -169,6 +169,9 @@ notcurses_stop_minimal(void* vnc, void** altstack){
         nc->tcache.in_alt_screen = 0;
       }
     }
+  }
+  if(errret){
+    ret = errret;
   }
   logdebug("restored terminal, returning %d", ret);
   return ret;
@@ -1065,7 +1068,7 @@ int ncplane_destroy(ncplane* ncp){
   return ret;
 }
 
-int ncplane_destroy_family(ncplane *ncp){
+int ncplane_family_destroy(ncplane *ncp){
   if(ncp == NULL){
     return 0;
   }
@@ -1075,7 +1078,7 @@ int ncplane_destroy_family(ncplane *ncp){
   }
   int ret = 0;
   while(ncp->blist){
-    ret |= ncplane_destroy_family(ncp->blist);
+    ret |= ncplane_family_destroy(ncp->blist);
   }
   ret |= ncplane_destroy(ncp);
   return ret;
@@ -1390,7 +1393,7 @@ notcurses* notcurses_core_init(const notcurses_options* opts, FILE* outfp){
 err:{
     void* altstack;
     logpanic("alas, you will not be going to space today.");
-    notcurses_stop_minimal(ret, &altstack);
+    notcurses_stop_minimal(ret, &altstack, -1);
     fbuf_free(&ret->rstate.f);
     if(ret->tcache.ttyfd >= 0 && ret->tcache.tpreserved){
       (void)tcsetattr(ret->tcache.ttyfd, TCSAFLUSH, ret->tcache.tpreserved);
@@ -1449,7 +1452,7 @@ int notcurses_stop(notcurses* nc){
   int ret = 0;
   if(nc){
     void* altstack;
-    ret |= notcurses_stop_minimal(nc, &altstack);
+    ret |= notcurses_stop_minimal(nc, &altstack, 0);
     // if we were not using the alternate screen, our cursor's wherever we last
     // wrote. move it to the furthest place to which it advanced.
     if(!get_escape(&nc->tcache, ESCAPE_SMCUP)){
@@ -3183,19 +3186,16 @@ ncplane_as_rgba_internal(const ncplane* nc, ncblitter_e blit,
           for(unsigned px = 0 ; px < bset->width ; ++px){
             uint32_t* p = &ret[(targy + py) * (lenx * bset->width) + (targx + px)];
             bool background = is_bg_p(idx, py, px, bset->width);
+            *p = 0;
             if(background){
-              if(ba){
-                *p = 0;
-              }else{
+              if(!ba){
                 ncpixel_set_a(p, 0xff);
                 ncpixel_set_r(p, br);
                 ncpixel_set_g(p, bb);
                 ncpixel_set_b(p, bg);
               }
             }else{
-              if(fa){
-                *p = 0;
-              }else{
+              if(!fa){
                 ncpixel_set_a(p, 0xff);
                 ncpixel_set_r(p, fr);
                 ncpixel_set_g(p, fb);

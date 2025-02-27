@@ -741,6 +741,7 @@ apply_kitty_heuristics(tinfo* ti, size_t* tablelen, size_t* tableused){
   if(add_smulx_escapes(ti, tablelen, tableused)){
     return NULL;
   }
+  // FIXME we have problems using SELFREF; fix them!
   /*if(compare_versions(ti->termversion, "0.22.1") >= 0){
     setup_kitty_bitmaps(ti, ti->ttyfd, NCPIXEL_KITTY_SELFREF);
   }else*/ if(compare_versions(ti->termversion, "0.20.0") >= 0){
@@ -792,13 +793,22 @@ apply_vte_heuristics(tinfo* ti, size_t* tablelen, size_t* tableused){
 }
 
 static const char*
-apply_foot_heuristics(tinfo* ti, bool* forcesdm, bool* invertsixel){
+apply_foot_heuristics(tinfo* ti, size_t *tablelen, size_t *tableused,
+                      bool* forcesdm, bool* invertsixel){
   ti->caps.sextants = true;
   ti->caps.quadrants = true;
   ti->caps.rgb = true;
   *forcesdm = true;
   if(compare_versions(ti->termversion, "1.8.2") < 0){
     *invertsixel = true;
+  }
+  if(compare_versions(ti->termversion, "1.18.0") >= 0){
+    if(add_smulx_escapes(ti, tablelen, tableused)){
+      return NULL;
+    }
+  }
+  if(compare_versions(ti->termversion, "1.20.0") >= 0){
+    ti->caps.octants = true;
   }
   return "foot";
 }
@@ -917,6 +927,13 @@ apply_konsole_heuristics(tinfo* ti){
 }
 
 static const char*
+apply_ghostty_heuristics(tinfo* ti){
+  ti->caps.quadrants = true;
+  ti->caps.sextants = true;
+  return "ghostty";
+}
+
+static const char*
 apply_linux_heuristics(tinfo* ti, unsigned nonewfonts){
   const char* tname = NULL;
 #ifdef __linux__
@@ -966,6 +983,7 @@ apply_term_heuristics(tinfo* ti, const char* tname, queried_terminals_e qterm,
     // setupterm interprets a missing/empty TERM variable as the special value “unknown”.
     tname = ti->termname ? ti->termname : "unknown";
   }
+  loginfo("tname is %s (qterm %d)", tname, qterm);
   // st had neither caps.sextants nor caps.quadrants last i checked (0.8.4)
   ti->caps.braille = true; // most everyone has working caps.braille, even from fonts
   ti->caps.halfblocks = true; // most everyone has working halfblocks
@@ -982,7 +1000,8 @@ apply_term_heuristics(tinfo* ti, const char* tname, queried_terminals_e qterm,
       newname = apply_vte_heuristics(ti, tablelen, tableused);
       break;
     case TERMINAL_FOOT:
-      newname = apply_foot_heuristics(ti, forcesdm, invertsixel);
+      newname = apply_foot_heuristics(ti, tablelen, tableused,
+                                      forcesdm, invertsixel);
       break;
     case TERMINAL_TMUX:
       newname = "tmux"; // FIXME what, oh what to do with tmux?
@@ -1029,7 +1048,11 @@ apply_term_heuristics(tinfo* ti, const char* tname, queried_terminals_e qterm,
     case TERMINAL_KONSOLE:
       newname = apply_konsole_heuristics(ti);
       break;
+    case TERMINAL_GHOSTTY:
+      newname = apply_ghostty_heuristics(ti);
+      break;
     default:
+      logwarn("no match for qterm %d tname %s", qterm, tname);
       newname = tname;
       break;
   }

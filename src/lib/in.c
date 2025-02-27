@@ -1556,6 +1556,7 @@ xtversion_cb(inputctx* ictx){
     { .prefix = "contour ", .suffix = 0, .term = TERMINAL_CONTOUR, },
     { .prefix = "kitty(", .suffix = ')', .term = TERMINAL_KITTY, },
     { .prefix = "foot(", .suffix = ')', .term = TERMINAL_FOOT, },
+    { .prefix = "ghostty ", .suffix = 0, .term = TERMINAL_GHOSTTY, },
     { .prefix = "mlterm(", .suffix = ')', .term = TERMINAL_MLTERM, },
     { .prefix = "tmux ", .suffix = 0, .term = TERMINAL_TMUX, },
     { .prefix = "iTerm2 ", .suffix = 0, .term = TERMINAL_ITERM, },
@@ -1720,14 +1721,16 @@ tcap_cb(inputctx* ictx){
           ictx->initdata->qterm = TERMINAL_MLTERM;
         }else if(strcmp(key, "xterm-kitty") == 0){
           ictx->initdata->qterm = TERMINAL_KITTY;
+        }else if(strcmp(key, "xterm-ghostty") == 0){
+          ictx->initdata->qterm = TERMINAL_GHOSTTY;
         }else if(strcmp(key, "xterm-256color") == 0){
           ictx->initdata->qterm = TERMINAL_XTERM;
         }else{
-          logdebug("unknown terminal name %s", key);
+          logwarn("unknown terminal name %s", key);
         }
       }
     }else if(strcmp(val, "RGB") == 0){
-      loginfo("got rgb (%s)", s);
+      loginfo("got rgb (%s)", key);
       ictx->initdata->rgb = true;
     }else if(strcmp(val, "hpa") == 0){
       loginfo("got hpa (%s)", key);
@@ -2668,6 +2671,11 @@ int inputready_fd(const inputctx* ictx){
 #endif
 }
 
+static void
+cleanup_mutex(void* v){
+  pthread_mutex_unlock(v);
+}
+
 static inline uint32_t
 internal_get(inputctx* ictx, const struct timespec* ts, ncinput* ni){
   uint32_t id;
@@ -2690,17 +2698,22 @@ internal_get(inputctx* ictx, const struct timespec* ts, ncinput* ni){
       }
       return NCKEY_EOF;
     }
+    int r;
+    pthread_cleanup_push(cleanup_mutex, &ictx->ilock);
     if(ts == NULL){
-      pthread_cond_wait(&ictx->icond, &ictx->ilock);
+      r = pthread_cond_wait(&ictx->icond, &ictx->ilock);
     }else{
-      int r = pthread_cond_timedwait(&ictx->icond, &ictx->ilock, ts);
+      r = pthread_cond_timedwait(&ictx->icond, &ictx->ilock, ts);
+    }
+    pthread_cleanup_pop(0);
+    if(r){
+      pthread_mutex_unlock(&ictx->ilock);
       if(r == ETIMEDOUT){
-        pthread_mutex_unlock(&ictx->ilock);
         if(ni){
           memset(ni, 0, sizeof(*ni));
         }
         return 0;
-      }else if(r < 0){
+      }else{
         inc_input_errors(ictx);
         if(ni){
           memset(ni, 0, sizeof(*ni));
@@ -2728,9 +2741,11 @@ internal_get(inputctx* ictx, const struct timespec* ts, ncinput* ni){
     logtrace("draining event readiness pipe %d", ictx->ivalid);
 #ifndef __MINGW32__
     char c;
+    pthread_cleanup_push(cleanup_mutex, &ictx->ilock);
     while(read(ictx->readypipes[0], &c, sizeof(c)) == 1){
       // FIXME accelerate?
     }
+    pthread_cleanup_pop(0);
 #else
     // we ought be draining this, but it breaks everything, as we can't easily
     // do nonblocking input from a pipe in windows, augh...

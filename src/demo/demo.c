@@ -22,9 +22,9 @@ static demoresult* results;
 
 static const char DEFAULT_DEMO[] = "ixetunchdmbkywjgarvlsfqzo";
 
-atomic_bool interrupted = ATOMIC_VAR_INIT(false);
+atomic_bool interrupted = false;
 // checked following demos, whether aborted, failed, or otherwise
-static atomic_bool restart_demos = ATOMIC_VAR_INIT(false);
+static atomic_bool restart_demos = false;
 
 void interrupt_demo(void){
   atomic_store(&interrupted, true);
@@ -384,6 +384,7 @@ summary_json(FILE* f, const char* spec, int rows, int cols){
                     results[i].stats.renders, results[i].timens, i < strlen(spec) - 1 ? "," : "") < 0);
   }
   ret |= (fprintf(f, "}}}\n") < 0);
+  ret |= fclose(f);
   return ret;
 }
 

@@ -1,6 +1,14 @@
 This document attempts to list user-visible changes and any major internal
 rearrangements of Notcurses.
 
+* 3.0.14 (not yet released)
+  * `ncplane_family_destroy()` has been added to the API.
+  * Added some `foot` capabilities. Recognize `ghostty` and bless its
+     quadrants/sextants implementations.
+  * A bug introduced sometime in 2022 that caused unpredictable
+    hangs on exit was resolved (#2837), yay!
+  * We now require CMake 3.21 (vs 3.14) and C17 (vs C11).
+
 * 3.0.13 (2025-01-11)
   * Fix regression when building with `USE_CXX=off`.
   * Use `distutils` from its own Python component rather than assuming
