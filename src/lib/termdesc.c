@@ -179,7 +179,7 @@ query_rgb(void){
   if(!rgb){
     // RGB terminfo capability being a new thing (as of ncurses 6.1), it's not
     // commonly found in terminal entries today. COLORTERM, however, is a
-    // de-facto (if imperfect/kludgy) standard way of indicating TrueColor
+    // de facto (if imperfect/kludgy) standard way of indicating TrueColor
     // support for a terminal. The variable takes one of two case-sensitive
     // values:
     //
@@ -1663,10 +1663,14 @@ int putenv_term(const char* tname){
   if(oldterm && strcmp(oldterm, tname) == 0){
     return 0;
   }
-  char* buf = malloc(strlen(tname) + strlen(ENVVAR) + 1);
+  // we're making a string of the form ENVVAR=tname
+  char* buf = malloc(strlen(tname) + strlen(ENVVAR) + 2);
   if(buf == NULL){
     return -1;
   }
+  char* p = stpcpy(buf, ENVVAR);
+  *p = '=';
+  stpcpy(p + 1, tname);
   int c = putenv(buf);
   if(c){
     logerror("couldn't export %s", buf);
